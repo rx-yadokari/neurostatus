@@ -1,17 +1,30 @@
-# neurostatus
+# Neurostatus
 
-A new Flutter project.
+Application Android de suivi d'humeur au quotidien.
 
-## Getting Started
+Une notification quotidienne invite à noter :
+- un état général sur une échelle de 1 à 5,
+- les émotions principales du jour (liste prédéfinie ou personnalisée),
+- un évènement majeur (optionnel).
 
-This project is a starting point for a Flutter application.
+Tout est conservé localement (SQLite) pour un suivi sur plusieurs années,
+avec un écran d'historique, un graphique d'évolution, un journal de crises,
+un export CSV/JSON pour les sauvegardes, et un import des exports Daylio.
 
-A few resources to get you started if this is your first Flutter project:
+## Développement
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Projet Flutter classique.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```
+flutter pub get
+flutter run
+```
+
+## Build APK
+
+```
+flutter build apk --release
+```
+
+L'APK généré se trouve dans `build/app/outputs/flutter-apk/app-release.apk`
+et peut être installé directement sur un téléphone Android (sideload).
