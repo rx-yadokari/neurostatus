@@ -1,0 +1,22 @@
+.claude/settings.local.json
+
+# Personal mood data / import sources — not for version control
+input/
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Misc
+*.log
+.DS_Store
