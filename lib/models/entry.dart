@@ -5,6 +5,7 @@ class MoodEntry {
   final DateTime date;
   final int mood;
   final List<String> emotions;
+  final List<String> contacts;
   final String? event;
   final DateTime createdAt;
 
@@ -13,6 +14,7 @@ class MoodEntry {
     required this.date,
     required this.mood,
     required this.emotions,
+    this.contacts = const [],
     this.event,
     required this.createdAt,
   });
@@ -30,6 +32,7 @@ class MoodEntry {
       'date': dateStr,
       'mood': mood,
       'emotions': jsonEncode(emotions),
+      'contacts': jsonEncode(contacts),
       'event': event,
       'created_at': createdAt.toIso8601String(),
     };
@@ -41,6 +44,9 @@ class MoodEntry {
       date: DateTime.parse(map['date'] as String),
       mood: map['mood'] as int,
       emotions: (jsonDecode(map['emotions'] as String) as List).cast<String>(),
+      contacts: map['contacts'] == null
+          ? const []
+          : (jsonDecode(map['contacts'] as String) as List).cast<String>(),
       event: map['event'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
     );

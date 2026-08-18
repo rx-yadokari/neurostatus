@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(dbPath, 'neurostatus.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE entries (
@@ -30,6 +30,7 @@ class AppDatabase {
             date TEXT NOT NULL UNIQUE,
             mood INTEGER NOT NULL,
             emotions TEXT NOT NULL,
+            contacts TEXT NOT NULL DEFAULT '[]',
             event TEXT,
             created_at TEXT NOT NULL
           )
@@ -60,6 +61,11 @@ class AppDatabase {
           // "Stress" merged into "Anxiété" as a single emotion.
           await _renameEmotion(db, 'entries', 'Stress', 'Anxiété');
           await _renameEmotion(db, 'crisis_logs', 'Stress', 'Anxiété');
+        }
+        if (oldVersion < 5) {
+          await db.execute(
+            "ALTER TABLE entries ADD COLUMN contacts TEXT NOT NULL DEFAULT '[]'",
+          );
         }
       },
     );

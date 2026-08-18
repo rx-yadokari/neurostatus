@@ -139,6 +139,7 @@ class DaylioImportService {
           date: date,
           mood: mood,
           emotions: emotions,
+          contacts: const [],
           event: eventParts.isEmpty ? null : eventParts.join(' — '),
           createdAt: DateTime.now(),
         ),

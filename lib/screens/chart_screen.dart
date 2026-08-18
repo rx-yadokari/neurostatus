@@ -4,13 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/contacts_repository.dart';
 import '../data/database.dart';
 import '../data/emotions_repository.dart';
 import '../data/mood_colors.dart';
 import '../data/series_colors.dart';
 import '../models/entry.dart';
 
-const _overlayPrefsKey = 'chart_overlay_emotions';
+const _overlayPrefsKey = 'chart_overlay_series';
+// Superseded by _overlayPrefsKey when contacts were added to the overlay;
+// read once to migrate anyone's existing emotion selection forward.
+const _legacyOverlayPrefsKey = 'chart_overlay_emotions';
 const _minRunLength = 1;
 
 enum _ChartGranularity { day, week }
@@ -40,11 +44,19 @@ class _ChartScreenState extends State<ChartScreen> {
 
   List<MoodEntry> _entries = [];
   List<String> _allEmotions = [];
-  Set<String> _overlayEmotions = {};
+  List<String> _allContacts = [];
+  Set<String> _overlaySeries = {};
   Map<String, int> _crisisCounts = {};
   bool _loading = true;
   double _dayWidth = 56;
   _ChartGranularity _granularity = _ChartGranularity.day;
+
+  /// Combined, stably-ordered catalog used for color assignment so an
+  /// emotion and a contact never end up sharing a color.
+  List<String> get _seriesCatalog => [..._allEmotions, ..._allContacts];
+
+  bool _hasSeries(MoodEntry entry, String name) =>
+      entry.emotions.contains(name) || entry.contacts.contains(name);
 
   @override
   void initState() {
@@ -66,9 +78,19 @@ class _ChartScreenState extends State<ChartScreen> {
   Future<void> _load() async {
     final entries = await AppDatabase.instance.allEntries(descending: false);
     final emotions = await EmotionsRepository.instance.allEmotions();
+    final contacts = await ContactsRepository.instance.allContacts();
     final crisisLogs = await AppDatabase.instance.allCrisisLogs();
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList(_overlayPrefsKey) ?? [];
+    final currentSaved = prefs.getStringList(_overlayPrefsKey);
+    final legacySaved = currentSaved == null
+        ? prefs.getStringList(_legacyOverlayPrefsKey)
+        : null;
+    if (legacySaved != null) {
+      await prefs.setStringList(_overlayPrefsKey, legacySaved);
+      await prefs.remove(_legacyOverlayPrefsKey);
+    }
+    final saved = currentSaved ?? legacySaved ?? <String>[];
+    final catalog = {...emotions, ...contacts};
     final crisisCounts = <String, int>{};
     for (final log in crisisLogs) {
       crisisCounts[log.dateStr] = (crisisCounts[log.dateStr] ?? 0) + 1;
@@ -76,25 +98,26 @@ class _ChartScreenState extends State<ChartScreen> {
     setState(() {
       _entries = entries;
       _allEmotions = emotions;
-      _overlayEmotions = saved.where(emotions.contains).toSet();
+      _allContacts = contacts;
+      _overlaySeries = saved.where(catalog.contains).toSet();
       _crisisCounts = crisisCounts;
       _loading = false;
     });
   }
 
-  Future<void> _setOverlayEmotions(Set<String> emotions) async {
-    setState(() => _overlayEmotions = emotions);
+  Future<void> _setOverlaySeries(Set<String> series) async {
+    setState(() => _overlaySeries = series);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_overlayPrefsKey, emotions.toList());
+    await prefs.setStringList(_overlayPrefsKey, series.toList());
   }
 
   /// Runs (start/end index inclusive) of _minRunLength+ consecutive entries
-  /// where [emotion] was recorded.
-  List<(int, int)> _runsFor(String emotion) {
+  /// where [name] (an emotion or a contact) was recorded.
+  List<(int, int)> _runsFor(String name) {
     final runs = <(int, int)>[];
     int? start;
     for (var i = 0; i < _entries.length; i++) {
-      if (_entries[i].emotions.contains(emotion)) {
+      if (_hasSeries(_entries[i], name)) {
         start ??= i;
       } else if (start != null) {
         if (i - start >= _minRunLength) runs.add((start, i - 1));
@@ -107,14 +130,56 @@ class _ChartScreenState extends State<ChartScreen> {
     return runs;
   }
 
-  Future<void> _pickOverlayEmotions() async {
-    var selection = {..._overlayEmotions};
+  Widget _seriesChipWrap({
+    required List<String> names,
+    required Set<String> selection,
+    required void Function(String name, bool selected) onSelected,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final name in names)
+          FilterChip(
+            label: Text(name),
+            selected: selection.contains(name),
+            avatar: selection.contains(name)
+                ? CircleAvatar(
+                    backgroundColor: SeriesColors.colorFor(
+                      _seriesCatalog.indexOf(name),
+                      Theme.of(context).brightness,
+                    ),
+                  )
+                : null,
+            onSelected: (selected) {
+              if (selected && selection.length >= SeriesColors.maxSeries) {
+                return;
+              }
+              onSelected(name, selected);
+            },
+          ),
+      ],
+    );
+  }
+
+  Future<void> _pickOverlaySeries() async {
+    var selection = {..._overlaySeries};
     final result = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            void toggle(String name, bool selected) {
+              setSheetState(() {
+                if (selected) {
+                  selection.add(name);
+                } else {
+                  selection.remove(name);
+                }
+              });
+            }
+
             return SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -123,13 +188,13 @@ class _ChartScreenState extends State<ChartScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Suivre des émotions sur le graphique',
+                      'Suivre des émotions ou des contacts sur le graphique',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Une bande apparaît sous le graphique les jours où '
-                      'l\'émotion est cochée (max ${SeriesColors.maxSeries}).',
+                      'c\'est coché (max ${SeriesColors.maxSeries}).',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 12),
@@ -138,37 +203,32 @@ class _ChartScreenState extends State<ChartScreen> {
                         maxHeight: MediaQuery.of(context).size.height * 0.5,
                       ),
                       child: SingleChildScrollView(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            for (final emotion in _allEmotions)
-                              FilterChip(
-                                label: Text(emotion),
-                                selected: selection.contains(emotion),
-                                avatar: selection.contains(emotion)
-                                    ? CircleAvatar(
-                                        backgroundColor: SeriesColors.colorFor(
-                                          _allEmotions.indexOf(emotion),
-                                          Theme.of(context).brightness,
-                                        ),
-                                      )
-                                    : null,
-                                onSelected: (selected) {
-                                  if (selected &&
-                                      selection.length >=
-                                          SeriesColors.maxSeries) {
-                                    return;
-                                  }
-                                  setSheetState(() {
-                                    if (selected) {
-                                      selection.add(emotion);
-                                    } else {
-                                      selection.remove(emotion);
-                                    }
-                                  });
-                                },
+                            Text(
+                              'Émotions',
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            _seriesChipWrap(
+                              names: _allEmotions,
+                              selection: selection,
+                              onSelected: toggle,
+                            ),
+                            if (_allContacts.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'Contacts sociaux',
+                                style: Theme.of(context).textTheme.labelLarge,
                               ),
+                              const SizedBox(height: 8),
+                              _seriesChipWrap(
+                                names: _allContacts,
+                                selection: selection,
+                                onSelected: toggle,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -189,7 +249,7 @@ class _ChartScreenState extends State<ChartScreen> {
         );
       },
     );
-    if (result != null) await _setOverlayEmotions(result);
+    if (result != null) await _setOverlaySeries(result);
   }
 
   List<_WeekBucket> _weeklyBuckets() {
@@ -237,8 +297,8 @@ class _ChartScreenState extends State<ChartScreen> {
             : [
                 IconButton(
                   icon: const Icon(Icons.timeline),
-                  tooltip: 'Suivre des émotions',
-                  onPressed: _pickOverlayEmotions,
+                  tooltip: 'Suivre des émotions ou des contacts',
+                  onPressed: _pickOverlaySeries,
                 ),
                 IconButton(
                   icon: const Icon(Icons.zoom_out),
@@ -280,7 +340,7 @@ class _ChartScreenState extends State<ChartScreen> {
                         : _buildWeeklyChart(),
                   ),
                   if (_granularity == _ChartGranularity.day &&
-                      _overlayEmotions.isNotEmpty)
+                      _overlaySeries.isNotEmpty)
                     _buildOverlayLegend(),
                   _buildLegend(),
                 ],
@@ -322,7 +382,7 @@ class _ChartScreenState extends State<ChartScreen> {
         spacing: 12,
         runSpacing: 4,
         children: [
-          for (final emotion in _overlayEmotions)
+          for (final name in _overlaySeries)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -331,14 +391,14 @@ class _ChartScreenState extends State<ChartScreen> {
                   height: 10,
                   decoration: BoxDecoration(
                     color: SeriesColors.colorFor(
-                      _allEmotions.indexOf(emotion),
+                      _seriesCatalog.indexOf(name),
                       brightness,
                     ),
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(emotion, style: Theme.of(context).textTheme.bodySmall),
+                Text(name, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
         ],
@@ -551,6 +611,9 @@ class _ChartScreenState extends State<ChartScreen> {
                         final emotions = entry.emotions.isEmpty
                             ? ''
                             : '\n${entry.emotions.join(', ')}';
+                        final contacts = entry.contacts.isEmpty
+                            ? ''
+                            : '\n👥 ${entry.contacts.join(', ')}';
                         final event =
                             entry.event == null || entry.event!.isEmpty
                             ? ''
@@ -560,7 +623,7 @@ class _ChartScreenState extends State<ChartScreen> {
                             ? ''
                             : '\n⚠ $crisisCount crise${crisisCount > 1 ? 's' : ''}';
                         return BarTooltipItem(
-                          '${DateFormat('d MMM', 'fr_FR').format(entry.date)} · ${entry.mood}/5$emotions$event$crisis',
+                          '${DateFormat('d MMM', 'fr_FR').format(entry.date)} · ${entry.mood}/5$emotions$contacts$event$crisis',
                           const TextStyle(color: Colors.white),
                         );
                       },
@@ -613,7 +676,7 @@ class _ChartScreenState extends State<ChartScreen> {
                   ],
                 ),
               ),
-            for (final emotion in _overlayEmotions)
+            for (final name in _overlaySeries)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: SizedBox(
@@ -621,10 +684,10 @@ class _ChartScreenState extends State<ChartScreen> {
                   width: chartWidth,
                   child: CustomPaint(
                     painter: _PresenceStripPainter(
-                      runs: _runsFor(emotion),
+                      runs: _runsFor(name),
                       dayWidth: _dayWidth,
                       color: SeriesColors.colorFor(
-                        _allEmotions.indexOf(emotion),
+                        _seriesCatalog.indexOf(name),
                         brightness,
                       ),
                     ),

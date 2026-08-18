@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../data/contacts_repository.dart';
 import '../data/database.dart';
 import '../data/emotions_repository.dart';
 import '../models/entry.dart';
@@ -20,8 +21,10 @@ class EntryScreen extends StatefulWidget {
 class _EntryScreenState extends State<EntryScreen> {
   double _mood = 3;
   final Set<String> _selectedEmotions = {};
+  final Set<String> _selectedContacts = {};
   final _eventController = TextEditingController();
   List<String> _availableEmotions = [];
+  List<String> _availableContacts = [];
   bool _loading = true;
   bool _saving = false;
   String? _patternAlert;
@@ -34,13 +37,16 @@ class _EntryScreenState extends State<EntryScreen> {
 
   Future<void> _load() async {
     final emotions = await EmotionsRepository.instance.allEmotions();
+    final contacts = await ContactsRepository.instance.allContacts();
     final existing = await AppDatabase.instance.entryForDate(widget.date);
     final alert = await PatternAlertService().checkForConcerningPattern();
     setState(() {
       _availableEmotions = emotions;
+      _availableContacts = contacts;
       if (existing != null) {
         _mood = existing.mood.toDouble();
         _selectedEmotions.addAll(existing.emotions);
+        _selectedContacts.addAll(existing.contacts);
         _eventController.text = existing.event ?? '';
       }
       _patternAlert = alert;
@@ -86,12 +92,46 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
+  Future<void> _addCustomContact() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nouveau contact'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Ex : Alice, Famille'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.trim().isNotEmpty) {
+      await ContactsRepository.instance.addContact(result);
+      final contacts = await ContactsRepository.instance.allContacts();
+      setState(() {
+        _availableContacts = contacts;
+        _selectedContacts.add(result.trim());
+      });
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     final entry = MoodEntry(
       date: widget.date,
       mood: _mood.round(),
       emotions: _selectedEmotions.toList(),
+      contacts: _selectedContacts.toList(),
       event: _eventController.text.trim().isEmpty
           ? null
           : _eventController.text.trim(),
@@ -231,6 +271,37 @@ class _EntryScreenState extends State<EntryScreen> {
                   avatar: const Icon(Icons.add, size: 18),
                   label: const Text('Ajouter'),
                   onPressed: _addCustomEmotion,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Contacts sociaux (optionnel)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final contact in _availableContacts)
+                  FilterChip(
+                    label: Text(contact),
+                    selected: _selectedContacts.contains(contact),
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedContacts.add(contact);
+                        } else {
+                          _selectedContacts.remove(contact);
+                        }
+                      });
+                    },
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.add, size: 18),
+                  label: const Text('Ajouter'),
+                  onPressed: _addCustomContact,
                 ),
               ],
             ),
