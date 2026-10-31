@@ -105,11 +105,14 @@ class DaylioImportService {
         continue;
       }
 
-      if (!overwriteExisting) {
-        final existing = await AppDatabase.instance.entryForDate(date);
-        if (existing != null) {
+      final existingForDay = await AppDatabase.instance.entriesForDate(date);
+      if (existingForDay.isNotEmpty) {
+        if (!overwriteExisting) {
           result.skippedExisting++;
           continue;
+        }
+        for (final e in existingForDay) {
+          await AppDatabase.instance.deleteEntry(e.id!);
         }
       }
 
@@ -134,9 +137,9 @@ class DaylioImportService {
         if (value.isNotEmpty) eventParts.add(value);
       }
 
-      await AppDatabase.instance.upsertEntry(
+      await AppDatabase.instance.saveEntry(
         MoodEntry(
-          date: date,
+          timestamp: date,
           mood: mood,
           emotions: emotions,
           contacts: const [],

@@ -1,28 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../data/database.dart';
 import '../data/emotions_repository.dart';
 import '../models/crisis_log.dart';
+import '../services/cog_sync_service.dart';
 
 const _quickEmotions = ['Peur', 'Anxiété', 'Colère', 'Désespoir'];
 
-Future<bool> showCrisisLogSheet(BuildContext context) async {
+Future<bool> showCrisisLogSheet(
+  BuildContext context, {
+  DateTime? initialDate,
+}) async {
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => const _CrisisLogSheet(),
+    builder: (context) => _CrisisLogSheet(initialDate: initialDate),
   );
   return result ?? false;
 }
 
 class _CrisisLogSheet extends StatefulWidget {
-  const _CrisisLogSheet();
+  final DateTime? initialDate;
+
+  const _CrisisLogSheet({this.initialDate});
 
   @override
   State<_CrisisLogSheet> createState() => _CrisisLogSheetState();
 }
 
 class _CrisisLogSheetState extends State<_CrisisLogSheet> {
+  late DateTime _timestamp;
   double _intensity = 3;
   final _durationController = TextEditingController();
   final _triggerController = TextEditingController();
@@ -33,6 +43,7 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
   @override
   void initState() {
     super.initState();
+    _timestamp = widget.initialDate ?? DateTime.now();
     EmotionsRepository.instance.allEmotions().then((all) {
       if (!mounted) return;
       setState(() {
@@ -42,6 +53,30 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
             if (!_quickEmotions.contains(e)) e,
         ];
       });
+    });
+  }
+
+  Future<void> _pickTimestamp() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _timestamp,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate == null || !mounted) return;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_timestamp),
+    );
+    if (pickedTime == null) return;
+    setState(() {
+      _timestamp = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
     });
   }
 
@@ -57,7 +92,7 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
     final duration = int.tryParse(_durationController.text.trim());
     await AppDatabase.instance.insertCrisisLog(
       CrisisLog(
-        timestamp: DateTime.now(),
+        timestamp: _timestamp,
         intensity: _intensity.round(),
         durationMinutes: duration,
         trigger: _triggerController.text.trim().isEmpty
@@ -66,6 +101,7 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
         emotions: _emotions.toList(),
       ),
     );
+    unawaited(CogSyncService.instance.syncIfEnabled());
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -97,9 +133,22 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
                   ),
                 ],
               ),
-              Text(
-                DateTime.now().toString().substring(0, 16),
-                style: Theme.of(context).textTheme.bodySmall,
+              InkWell(
+                onTap: _pickTimestamp,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat(
+                        'EEEE d MMMM yyyy · HH:mm',
+                        'fr_FR',
+                      ).format(_timestamp),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.edit, size: 14),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               Text('Intensité : ${_intensity.round()}/5'),

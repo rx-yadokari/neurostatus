@@ -2,7 +2,7 @@ import 'dart:convert';
 
 class MoodEntry {
   final int? id;
-  final DateTime date;
+  final DateTime timestamp;
   final int mood;
   final List<String> emotions;
   final List<String> contacts;
@@ -11,7 +11,7 @@ class MoodEntry {
 
   MoodEntry({
     this.id,
-    required this.date,
+    required this.timestamp,
     required this.mood,
     required this.emotions,
     this.contacts = const [],
@@ -19,16 +19,20 @@ class MoodEntry {
     required this.createdAt,
   });
 
+  /// Calendar day this entry belongs to (several entries can share a day).
+  DateTime get date => DateTime(timestamp.year, timestamp.month, timestamp.day);
+
   static String dateKey(DateTime date) {
     final d = DateTime(date.year, date.month, date.day);
     return d.toIso8601String().split('T').first;
   }
 
-  String get dateStr => dateKey(date);
+  String get dateStr => dateKey(timestamp);
 
   Map<String, Object?> toMap() {
     return {
       'id': id,
+      'timestamp': timestamp.toIso8601String(),
       'date': dateStr,
       'mood': mood,
       'emotions': jsonEncode(emotions),
@@ -41,7 +45,7 @@ class MoodEntry {
   factory MoodEntry.fromMap(Map<String, Object?> map) {
     return MoodEntry(
       id: map['id'] as int?,
-      date: DateTime.parse(map['date'] as String),
+      timestamp: DateTime.parse(map['timestamp'] as String),
       mood: map['mood'] as int,
       emotions: (jsonDecode(map['emotions'] as String) as List).cast<String>(),
       contacts: map['contacts'] == null

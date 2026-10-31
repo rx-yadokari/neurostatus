@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../services/daylio_import_service.dart';
 import '../services/notification_service.dart';
+import 'cog_sync_screen.dart';
+import 'contacts_screen.dart';
 import 'crisis_history_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -146,6 +148,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Humeur convertie sur 1-5, activités importées comme émotions',
             ),
             onTap: _importing ? null : _importDaylio,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.people_outline),
+            title: const Text('Personnes'),
+            subtitle: const Text(
+              'Influence des contacts sur ton humeur, notes',
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ContactsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync_outlined),
+            title: const Text('Synchro COG'),
+            subtitle: const Text(
+              'Envoyer un résumé vers le repo second-brain',
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CogSyncScreen()),
+              );
+            },
           ),
           const Divider(),
           ListTile(

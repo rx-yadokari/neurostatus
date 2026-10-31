@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as tz_data;
-import 'package:timezone/timezone.dart' as tz;
+
+import 'reminder_alarm_service.dart';
 
 class NotificationService {
   NotificationService._();
@@ -11,21 +10,13 @@ class NotificationService {
 
   static const _hourKey = 'notif_hour';
   static const _minuteKey = 'notif_minute';
-  static const int _dailyReminderId = 0;
+  static const int _reminderNotificationId = 0;
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
   Future<void> init() async {
     if (_initialized) return;
-    tz_data.initializeTimeZones();
-    try {
-      final localTz = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(localTz));
-    } catch (_) {
-      tz.setLocalLocation(tz.getLocation('Europe/Paris'));
-    }
-
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     await _plugin.initialize(initSettings);
@@ -50,47 +41,36 @@ class NotificationService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_hourKey, time.hour);
     await prefs.setInt(_minuteKey, time.minute);
-    await scheduleDailyReminder(time);
+    await ReminderAlarmService.instance.scheduleDaily(time);
   }
 
-  Future<void> scheduleDailyReminder(TimeOfDay time) async {
+  /// Re-arms the daily background check (idempotent — safe to call on every
+  /// app start) and clears any leftover reminder notification, including one
+  /// left over from the previous (statically-scheduled) version of the app.
+  Future<void> ensureScheduled() async {
+    await _plugin.cancel(_reminderNotificationId);
+    final time = await getReminderTime();
+    await ReminderAlarmService.instance.scheduleDaily(time);
+  }
+
+  /// Shows the reminder immediately. Called from the background alarm
+  /// callback only when today has no entry yet.
+  Future<void> showReminderNow() async {
     await init();
-    await _plugin.cancel(_dailyReminderId);
-
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      time.hour,
-      time.minute,
-    );
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
-    }
-
-    await _plugin.zonedSchedule(
-      _dailyReminderId,
+    await _plugin.show(
+      _reminderNotificationId,
       'Comment tu te sens aujourd\'hui ?',
       'Prends une minute pour noter ton état émotionnel.',
-      scheduled,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'daily_reminder',
           'Rappel quotidien',
-          channelDescription: 'Rappel quotidien pour noter son état émotionnel',
+          channelDescription:
+              'Rappel quotidien pour noter son état émotionnel',
           importance: Importance.high,
           priority: Priority.high,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
     );
-  }
-
-  Future<void> ensureScheduled() async {
-    final time = await getReminderTime();
-    await scheduleDailyReminder(time);
   }
 }

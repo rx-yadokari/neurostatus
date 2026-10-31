@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'screens/chart_screen.dart';
@@ -7,6 +8,7 @@ import 'screens/entry_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/notification_service.dart';
+import 'services/reminder_alarm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +16,7 @@ void main() async {
   await initializeDateFormatting('fr_FR');
   await NotificationService.instance.init();
   await NotificationService.instance.requestPermission();
+  await ReminderAlarmService.instance.init();
   await NotificationService.instance.ensureScheduled();
   runApp(const NeurostatusApp());
 }
@@ -26,6 +29,12 @@ class NeurostatusApp extends StatelessWidget {
     return MaterialApp(
       title: 'Neurostatus',
       locale: const Locale('fr', 'FR'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('fr', 'FR')],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
@@ -57,7 +66,7 @@ class _RootPageState extends State<RootPage> {
   Widget build(BuildContext context) {
     final pages = [
       EntryScreen(
-        date: DateTime.now(),
+        initialTimestamp: DateTime.now(),
         onSaved: () => setState(() => _index = 2),
       ),
       const HistoryScreen(),

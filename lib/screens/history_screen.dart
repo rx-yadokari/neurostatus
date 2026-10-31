@@ -31,6 +31,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
   }
 
+  Future<void> _delete(MoodEntry entry) async {
+    await AppDatabase.instance.deleteEntry(entry.id!);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,37 +54,53 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _entries.isEmpty
-              ? const Center(child: Text('Aucune entrée pour le moment'))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    itemCount: _entries.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = _entries[index];
-                      return ListTile(
-                        leading: CircleAvatar(child: Text(entry.mood.toString())),
-                        title: Text(
-                          DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(entry.date),
-                        ),
-                        subtitle: Text(
-                          entry.emotions.isEmpty
-                              ? (entry.event ?? '')
-                              : entry.emotions.join(', '),
-                        ),
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => EntryScreen(date: entry.date),
-                            ),
-                          );
-                          _load();
-                        },
-                      );
-                    },
-                  ),
-                ),
+          ? const Center(child: Text('Aucune entrée pour le moment'))
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView.separated(
+                itemCount: _entries.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final entry = _entries[index];
+                  return Dismissible(
+                    key: ValueKey(entry.id),
+                    background: Container(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 16),
+                      child: const Icon(Icons.delete),
+                    ),
+                    direction: DismissDirection.endToStart,
+                    onDismissed: (_) => _delete(entry),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        child: Text(entry.mood.toString()),
+                      ),
+                      title: Text(
+                        DateFormat(
+                          'EEEE d MMMM yyyy · HH:mm',
+                          'fr_FR',
+                        ).format(entry.timestamp),
+                      ),
+                      subtitle: Text(
+                        entry.emotions.isEmpty
+                            ? (entry.event ?? '')
+                            : entry.emotions.join(', '),
+                      ),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EntryScreen(existingEntry: entry),
+                          ),
+                        );
+                        _load();
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }

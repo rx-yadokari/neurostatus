@@ -1,30 +1,50 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/contacts_repository.dart';
 import '../data/database.dart';
 import '../data/emotions_repository.dart';
+import '../data/mood_colors.dart';
 import '../models/entry.dart';
+import '../services/cog_sync_service.dart';
 import '../services/pattern_alert_service.dart';
 import 'crisis_log_sheet.dart';
+import 'entry_calendar_picker_screen.dart';
 
 class EntryScreen extends StatefulWidget {
-  final DateTime date;
+  /// Edit an existing entry (opened from History). When null, a brand new
+  /// entry is created on save instead.
+  final MoodEntry? existingEntry;
+
+  /// Starting instant for a new entry. Ignored when [existingEntry] is set.
+  /// Defaults to now.
+  final DateTime? initialTimestamp;
+
   final VoidCallback? onSaved;
 
-  const EntryScreen({super.key, required this.date, this.onSaved});
+  const EntryScreen({
+    super.key,
+    this.existingEntry,
+    this.initialTimestamp,
+    this.onSaved,
+  });
 
   @override
   State<EntryScreen> createState() => _EntryScreenState();
 }
 
 class _EntryScreenState extends State<EntryScreen> {
+  int? _entryId;
+  late DateTime _timestamp;
   double _mood = 3;
   final Set<String> _selectedEmotions = {};
   final Set<String> _selectedContacts = {};
   final _eventController = TextEditingController();
   List<String> _availableEmotions = [];
   List<String> _availableContacts = [];
+  List<MoodEntry> _otherEntriesSameDay = [];
   bool _loading = true;
   bool _saving = false;
   String? _patternAlert;
@@ -32,26 +52,73 @@ class _EntryScreenState extends State<EntryScreen> {
   @override
   void initState() {
     super.initState();
+    final existing = widget.existingEntry;
+    _entryId = existing?.id;
+    _timestamp =
+        existing?.timestamp ?? widget.initialTimestamp ?? DateTime.now();
+    if (existing != null) {
+      _mood = existing.mood.toDouble();
+      _selectedEmotions.addAll(existing.emotions);
+      _selectedContacts.addAll(existing.contacts);
+      _eventController.text = existing.event ?? '';
+    }
     _load();
   }
 
   Future<void> _load() async {
     final emotions = await EmotionsRepository.instance.allEmotions();
     final contacts = await ContactsRepository.instance.allContacts();
-    final existing = await AppDatabase.instance.entryForDate(widget.date);
     final alert = await PatternAlertService().checkForConcerningPattern();
     setState(() {
       _availableEmotions = emotions;
       _availableContacts = contacts;
-      if (existing != null) {
-        _mood = existing.mood.toDouble();
-        _selectedEmotions.addAll(existing.emotions);
-        _selectedContacts.addAll(existing.contacts);
-        _eventController.text = existing.event ?? '';
-      }
       _patternAlert = alert;
       _loading = false;
     });
+    await _refreshOtherEntries();
+  }
+
+  Future<void> _refreshOtherEntries() async {
+    final dayEntries = await AppDatabase.instance.entriesForDate(_timestamp);
+    if (!mounted) return;
+    setState(() {
+      _otherEntriesSameDay = dayEntries
+          .where((e) => e.id != _entryId)
+          .toList();
+    });
+  }
+
+  Future<void> _pickTimestamp() async {
+    final pickedDate = await Navigator.push<DateTime>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EntryCalendarPickerScreen(initialDate: _timestamp),
+      ),
+    );
+    if (pickedDate == null || !mounted) return;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_timestamp),
+    );
+    if (pickedTime == null) return;
+    setState(() {
+      _timestamp = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+    });
+    await _refreshOtherEntries();
+  }
+
+  Future<void> _openOtherEntry(MoodEntry entry) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => EntryScreen(existingEntry: entry)),
+    );
+    await _refreshOtherEntries();
   }
 
   Future<void> _dismissPatternAlert() async {
@@ -128,16 +195,19 @@ class _EntryScreenState extends State<EntryScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final entry = MoodEntry(
-      date: widget.date,
+      id: _entryId,
+      timestamp: _timestamp,
       mood: _mood.round(),
       emotions: _selectedEmotions.toList(),
       contacts: _selectedContacts.toList(),
       event: _eventController.text.trim().isEmpty
           ? null
           : _eventController.text.trim(),
-      createdAt: DateTime.now(),
+      createdAt: widget.existingEntry?.createdAt ?? DateTime.now(),
     );
-    await AppDatabase.instance.upsertEntry(entry);
+    final savedId = await AppDatabase.instance.saveEntry(entry);
+    _entryId = savedId;
+    unawaited(CogSyncService.instance.syncIfEnabled());
     if (mounted) {
       setState(() => _saving = false);
       if (widget.onSaved != null) {
@@ -152,7 +222,10 @@ class _EntryScreenState extends State<EntryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel = DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(widget.date);
+    final dateLabel = DateFormat(
+      'EEEE d MMMM yyyy · HH:mm',
+      'fr_FR',
+    ).format(_timestamp);
 
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -163,13 +236,21 @@ class _EntryScreenState extends State<EntryScreen> {
         title: Text(dateLabel),
         actions: [
           IconButton(
+            icon: const Icon(Icons.edit_calendar_outlined),
+            tooltip: 'Choisir une autre date/heure',
+            onPressed: _pickTimestamp,
+          ),
+          IconButton(
             icon: Icon(
               Icons.warning_amber_rounded,
               color: Theme.of(context).colorScheme.error,
             ),
             tooltip: 'Signaler une crise',
             onPressed: () async {
-              final saved = await showCrisisLogSheet(context);
+              final saved = await showCrisisLogSheet(
+                context,
+                initialDate: _timestamp,
+              );
               if (saved && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Crise enregistrée')),
@@ -215,6 +296,35 @@ class _EntryScreenState extends State<EntryScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+            ],
+            if (_otherEntriesSameDay.isNotEmpty) ...[
+              Text(
+                'Autres saisies ce jour-là',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final e in _otherEntriesSameDay)
+                    ActionChip(
+                      avatar: CircleAvatar(
+                        backgroundColor: MoodColors.colorFor(e.mood),
+                        child: Text(
+                          '${e.mood}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      label: Text(DateFormat('HH:mm').format(e.timestamp)),
+                      onPressed: () => _openOtherEntry(e),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 24),
             ],
             Text(
               'État général',

@@ -623,7 +623,7 @@ class _ChartScreenState extends State<ChartScreen> {
                             ? ''
                             : '\n⚠ $crisisCount crise${crisisCount > 1 ? 's' : ''}';
                         return BarTooltipItem(
-                          '${DateFormat('d MMM', 'fr_FR').format(entry.date)} · ${entry.mood}/5$emotions$contacts$event$crisis',
+                          '${DateFormat('d MMM · HH:mm', 'fr_FR').format(entry.timestamp)} · ${entry.mood}/5$emotions$contacts$event$crisis',
                           const TextStyle(color: Colors.white),
                         );
                       },

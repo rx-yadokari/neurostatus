@@ -22,21 +22,11 @@ class AppDatabase {
     final path = p.join(dbPath, 'neurostatus.db');
     return openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL UNIQUE,
-            mood INTEGER NOT NULL,
-            emotions TEXT NOT NULL,
-            contacts TEXT NOT NULL DEFAULT '[]',
-            event TEXT,
-            created_at TEXT NOT NULL
-          )
-        ''');
-        await db.execute('CREATE INDEX idx_entries_date ON entries(date)');
+        await _createEntriesTable(db);
         await _createCrisisTable(db);
+        await _createContactNotesTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -67,7 +57,47 @@ class AppDatabase {
             "ALTER TABLE entries ADD COLUMN contacts TEXT NOT NULL DEFAULT '[]'",
           );
         }
+        if (oldVersion < 6) {
+          await _createContactNotesTable(db);
+        }
+        if (oldVersion < 7) {
+          // Entries move from "one per day" (UNIQUE date) to "as many as
+          // you want per day", now keyed by a full timestamp instead of a
+          // bare date. created_at (the real moment it was saved) becomes
+          // the migrated timestamp — more honest than a fabricated noon.
+          await db.execute('ALTER TABLE entries RENAME TO entries_v6');
+          // The old index stays bound to entries_v6 under its original
+          // name; drop it so the new entries table can reuse the name.
+          await db.execute('DROP INDEX IF EXISTS idx_entries_date');
+          await _createEntriesTable(db);
+          await db.execute('''
+            INSERT INTO entries
+              (id, timestamp, date, mood, emotions, contacts, event, created_at)
+            SELECT id, created_at, date, mood, emotions, contacts, event, created_at
+            FROM entries_v6
+          ''');
+          await db.execute('DROP TABLE entries_v6');
+        }
       },
+    );
+  }
+
+  Future<void> _createEntriesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        date TEXT NOT NULL,
+        mood INTEGER NOT NULL,
+        emotions TEXT NOT NULL,
+        contacts TEXT NOT NULL DEFAULT '[]',
+        event TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_entries_date ON entries(date)');
+    await db.execute(
+      'CREATE INDEX idx_entries_timestamp ON entries(timestamp)',
     );
   }
 
@@ -112,32 +142,76 @@ class AppDatabase {
     );
   }
 
-  Future<void> upsertEntry(MoodEntry entry) async {
-    final db = await database;
-    await db.insert(
-      'entries',
-      entry.toMap()..remove('id'),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+  Future<void> _createContactNotesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE contact_notes (
+        name TEXT PRIMARY KEY,
+        notes TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
   }
 
-  Future<MoodEntry?> entryForDate(DateTime date) async {
+  Future<String?> contactNotes(String name) async {
+    final db = await database;
+    final rows = await db.query(
+      'contact_notes',
+      columns: ['notes'],
+      where: 'name = ?',
+      whereArgs: [name],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['notes'] as String?;
+  }
+
+  Future<void> setContactNotes(String name, String notes) async {
+    final db = await database;
+    if (notes.trim().isEmpty) {
+      await db.delete('contact_notes', where: 'name = ?', whereArgs: [name]);
+      return;
+    }
+    await db.insert('contact_notes', {
+      'name': name,
+      'notes': notes,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Inserts a new entry, or updates it in place when [entry.id] is set
+  /// (editing an existing entry rather than adding another one for the day).
+  Future<int> saveEntry(MoodEntry entry) async {
+    final db = await database;
+    if (entry.id == null) {
+      return db.insert('entries', entry.toMap()..remove('id'));
+    }
+    await db.update(
+      'entries',
+      entry.toMap()..remove('id'),
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
+    return entry.id!;
+  }
+
+  /// All entries for a given calendar day, oldest first — several may exist
+  /// (e.g. a morning and an evening check-in).
+  Future<List<MoodEntry>> entriesForDate(DateTime date) async {
     final db = await database;
     final rows = await db.query(
       'entries',
       where: 'date = ?',
       whereArgs: [MoodEntry.dateKey(date)],
-      limit: 1,
+      orderBy: 'timestamp ASC',
     );
-    if (rows.isEmpty) return null;
-    return MoodEntry.fromMap(rows.first);
+    return rows.map(MoodEntry.fromMap).toList();
   }
 
   Future<List<MoodEntry>> allEntries({bool descending = true}) async {
     final db = await database;
     final rows = await db.query(
       'entries',
-      orderBy: 'date ${descending ? 'DESC' : 'ASC'}',
+      orderBy: 'timestamp ${descending ? 'DESC' : 'ASC'}',
     );
     return rows.map(MoodEntry.fromMap).toList();
   }

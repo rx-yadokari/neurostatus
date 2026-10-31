@@ -26,11 +26,14 @@ class ExportService {
   }
 
   static String _toCsv(List<MoodEntry> entries) {
-    final buffer = StringBuffer('date,mood,emotions,event\n');
+    final buffer = StringBuffer('timestamp,mood,emotions,contacts,event\n');
     for (final e in entries) {
       final emotions = e.emotions.join('|');
+      final contacts = e.contacts.join('|');
       final event = (e.event ?? '').replaceAll(',', ';').replaceAll('\n', ' ');
-      buffer.writeln('${e.dateStr},${e.mood},$emotions,$event');
+      buffer.writeln(
+        '${e.timestamp.toIso8601String()},${e.mood},$emotions,$contacts,$event',
+      );
     }
     return buffer.toString();
   }
@@ -38,9 +41,10 @@ class ExportService {
   static String _toJson(List<MoodEntry> entries) {
     final list = entries
         .map((e) => {
-              'date': e.dateStr,
+              'timestamp': e.timestamp.toIso8601String(),
               'mood': e.mood,
               'emotions': e.emotions,
+              'contacts': e.contacts,
               'event': e.event,
             })
         .toList();

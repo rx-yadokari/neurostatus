@@ -22,21 +22,34 @@ class PatternAlertService {
     }
 
     final entries = await AppDatabase.instance.allEntries(descending: true);
+
+    // Several entries can share a day now; a day counts as concerning if
+    // *any* of its entries does (catches a rough morning even if the
+    // evening entry looks better).
+    final dayOrder = <DateTime>[];
+    final dayConcerning = <DateTime, bool>{};
+    for (final entry in entries) {
+      final day = entry.date;
+      final concerning =
+          entry.mood <= 2 && entry.emotions.any(_concerningEmotions.contains);
+      final existing = dayConcerning[day];
+      if (existing == null) {
+        dayOrder.add(day);
+        dayConcerning[day] = concerning;
+      } else if (concerning) {
+        dayConcerning[day] = true;
+      }
+    }
+
     var streak = 0;
-    if (entries.isNotEmpty &&
-        DateTime.now().difference(entries.first.date).inDays <= 1) {
-      DateTime? prevDate;
-      for (final entry in entries) {
-        if (prevDate != null &&
-            prevDate.difference(entry.date).inDays != 1) {
-          break;
-        }
-        final concerning =
-            entry.mood <= 2 &&
-            entry.emotions.any(_concerningEmotions.contains);
-        if (!concerning) break;
+    if (dayOrder.isNotEmpty &&
+        DateTime.now().difference(dayOrder.first).inDays <= 1) {
+      DateTime? prevDay;
+      for (final day in dayOrder) {
+        if (prevDay != null && prevDay.difference(day).inDays != 1) break;
+        if (!dayConcerning[day]!) break;
         streak++;
-        prevDate = entry.date;
+        prevDay = day;
         if (streak >= _minStreak) break;
       }
     }
