@@ -201,6 +201,13 @@ class CogSyncService {
         ? null
         : recentEntries.map((e) => e.mood).reduce((a, b) => a + b) /
               recentEntries.length;
+    final fatigueEntries = recentEntries
+        .where((e) => e.fatigue != null)
+        .toList();
+    final avgFatigue30 = fatigueEntries.isEmpty
+        ? null
+        : fatigueEntries.map((e) => e.fatigue!).reduce((a, b) => a + b) /
+              fatigueEntries.length;
 
     final buffer = StringBuffer();
     buffer.writeln('---');
@@ -238,6 +245,13 @@ class CogSyncService {
         '${avg30.toStringAsFixed(1)}/5 sur ${recentEntries.length} saisie(s)',
       );
     }
+    if (avgFatigue30 != null) {
+      buffer.writeln(
+        '- Fatigue moyenne (30 derniers jours) : '
+        '${avgFatigue30.toStringAsFixed(1)}/5 sur ${fatigueEntries.length} '
+        'saisie(s)',
+      );
+    }
     buffer.writeln(
       '- Crises signalées (90 derniers jours) : ${recentCrises.length}',
     );
@@ -248,13 +262,15 @@ class CogSyncService {
       buffer.writeln('_Aucune entrée sur cette période._');
     } else {
       buffer.writeln(
-        '| Date et heure | Humeur | Émotions | Contacts | Évènement |',
+        '| Date et heure | Humeur | Fatigue | Émotions | Contacts | '
+        'Évènement |',
       );
-      buffer.writeln('|---|---|---|---|---|');
+      buffer.writeln('|---|---|---|---|---|---|');
       for (final e in recentEntries.reversed) {
+        final fatigue = e.fatigue == null ? '—' : '${e.fatigue}/5';
         buffer.writeln(
           '| ${DateFormat('yyyy-MM-dd HH:mm').format(e.timestamp)} | '
-          '${e.mood}/5 | ${_cell(e.emotions.join(', '))} | '
+          '${e.mood}/5 | $fatigue | ${_cell(e.emotions.join(', '))} | '
           '${_cell(e.contacts.join(', '))} | ${_cell(e.event)} |',
         );
       }

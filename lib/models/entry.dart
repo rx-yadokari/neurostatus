@@ -4,6 +4,7 @@ class MoodEntry {
   final int? id;
   final DateTime timestamp;
   final int mood;
+  final int? fatigue;
   final List<String> emotions;
   final List<String> contacts;
   final String? event;
@@ -13,6 +14,7 @@ class MoodEntry {
     this.id,
     required this.timestamp,
     required this.mood,
+    this.fatigue,
     required this.emotions,
     this.contacts = const [],
     this.event,
@@ -35,6 +37,7 @@ class MoodEntry {
       'timestamp': timestamp.toIso8601String(),
       'date': dateStr,
       'mood': mood,
+      'fatigue': fatigue,
       'emotions': jsonEncode(emotions),
       'contacts': jsonEncode(contacts),
       'event': event,
@@ -47,6 +50,7 @@ class MoodEntry {
       id: map['id'] as int?,
       timestamp: DateTime.parse(map['timestamp'] as String),
       mood: map['mood'] as int,
+      fatigue: map['fatigue'] as int?,
       emotions: (jsonDecode(map['emotions'] as String) as List).cast<String>(),
       contacts: map['contacts'] == null
           ? const []

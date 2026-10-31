@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import '../data/emotion_icons.dart';
 import '../models/entry.dart';
 import '../services/export_service.dart';
 import 'entry_screen.dart';
@@ -85,7 +86,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       subtitle: Text(
                         entry.emotions.isEmpty
                             ? (entry.event ?? '')
-                            : entry.emotions.join(', '),
+                            : entry.emotions
+                                  .map(EmotionIcons.withIcon)
+                                  .join(', '),
                       ),
                       onTap: () async {
                         await Navigator.push(

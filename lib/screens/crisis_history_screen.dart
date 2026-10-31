@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import '../data/emotion_icons.dart';
 import '../models/crisis_log.dart';
 
 class CrisisHistoryScreen extends StatefulWidget {
@@ -54,7 +55,8 @@ class _CrisisHistoryScreenState extends State<CrisisHistoryScreen> {
                       '${log.durationMinutes} min',
                     if (log.trigger != null && log.trigger!.isNotEmpty)
                       log.trigger!,
-                    if (log.emotions.isNotEmpty) log.emotions.join(', '),
+                    if (log.emotions.isNotEmpty)
+                      log.emotions.map(EmotionIcons.withIcon).join(', '),
                   ];
                   return Dismissible(
                     key: ValueKey(log.id),

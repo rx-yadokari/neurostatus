@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/contacts_repository.dart';
 import '../data/database.dart';
+import '../data/emotion_icons.dart';
 import '../data/emotions_repository.dart';
 import '../data/mood_colors.dart';
 import '../data/series_colors.dart';
@@ -39,7 +40,7 @@ class ChartScreen extends StatefulWidget {
 }
 
 class _ChartScreenState extends State<ChartScreen> {
-  static const double _minDayWidth = 10;
+  static const double _minDayWidth = 8;
   static const double _maxDayWidth = 96;
 
   List<MoodEntry> _entries = [];
@@ -48,7 +49,7 @@ class _ChartScreenState extends State<ChartScreen> {
   Set<String> _overlaySeries = {};
   Map<String, int> _crisisCounts = {};
   bool _loading = true;
-  double _dayWidth = 56;
+  double _dayWidth = 16;
   _ChartGranularity _granularity = _ChartGranularity.day;
 
   /// Combined, stably-ordered catalog used for color assignment so an
@@ -610,7 +611,7 @@ class _ChartScreenState extends State<ChartScreen> {
                         final entry = _entries[group.x];
                         final emotions = entry.emotions.isEmpty
                             ? ''
-                            : '\n${entry.emotions.join(', ')}';
+                            : '\n${entry.emotions.map(EmotionIcons.withIcon).join(', ')}';
                         final contacts = entry.contacts.isEmpty
                             ? ''
                             : '\n👥 ${entry.contacts.join(', ')}';

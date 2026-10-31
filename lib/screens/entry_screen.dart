@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../data/contacts_repository.dart';
 import '../data/database.dart';
+import '../data/emotion_icons.dart';
 import '../data/emotions_repository.dart';
 import '../data/mood_colors.dart';
 import '../models/entry.dart';
@@ -39,6 +40,7 @@ class _EntryScreenState extends State<EntryScreen> {
   int? _entryId;
   late DateTime _timestamp;
   double _mood = 3;
+  double _fatigue = 3;
   final Set<String> _selectedEmotions = {};
   final Set<String> _selectedContacts = {};
   final _eventController = TextEditingController();
@@ -58,6 +60,7 @@ class _EntryScreenState extends State<EntryScreen> {
         existing?.timestamp ?? widget.initialTimestamp ?? DateTime.now();
     if (existing != null) {
       _mood = existing.mood.toDouble();
+      _fatigue = (existing.fatigue ?? 3).toDouble();
       _selectedEmotions.addAll(existing.emotions);
       _selectedContacts.addAll(existing.contacts);
       _eventController.text = existing.event ?? '';
@@ -198,6 +201,7 @@ class _EntryScreenState extends State<EntryScreen> {
       id: _entryId,
       timestamp: _timestamp,
       mood: _mood.round(),
+      fatigue: _fatigue.round(),
       emotions: _selectedEmotions.toList(),
       contacts: _selectedContacts.toList(),
       event: _eventController.text.trim().isEmpty
@@ -355,6 +359,34 @@ class _EntryScreenState extends State<EntryScreen> {
             ),
             const SizedBox(height: 16),
             Text(
+              'Fatigue',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _fatigue,
+                    min: 1,
+                    max: 5,
+                    divisions: 4,
+                    label: _fatigue.round().toString(),
+                    onChanged: (v) => setState(() => _fatigue = v),
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: Text(
+                    _fatigue.round().toString(),
+                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
               'Émotions principales',
               style: Theme.of(context).textTheme.titleMedium,
             ),
@@ -365,6 +397,8 @@ class _EntryScreenState extends State<EntryScreen> {
               children: [
                 for (final emotion in _availableEmotions)
                   FilterChip(
+                    avatar: Text(EmotionIcons.iconFor(emotion)),
+                    showCheckmark: false,
                     label: Text(emotion),
                     selected: _selectedEmotions.contains(emotion),
                     onSelected: (selected) {

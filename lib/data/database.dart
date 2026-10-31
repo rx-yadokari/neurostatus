@@ -22,7 +22,7 @@ class AppDatabase {
     final path = p.join(dbPath, 'neurostatus.db');
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await _createEntriesTable(db);
         await _createCrisisTable(db);
@@ -78,6 +78,13 @@ class AppDatabase {
           ''');
           await db.execute('DROP TABLE entries_v6');
         }
+        if (oldVersion < 8 && oldVersion >= 7) {
+          // Fatigue tracked alongside mood from here on. Nullable: existing
+          // entries have no fatigue value and none is fabricated for them.
+          // (Skipped when oldVersion < 7: that path just recreated the
+          // table from scratch above, already including this column.)
+          await db.execute('ALTER TABLE entries ADD COLUMN fatigue INTEGER');
+        }
       },
     );
   }
@@ -89,6 +96,7 @@ class AppDatabase {
         timestamp TEXT NOT NULL,
         date TEXT NOT NULL,
         mood INTEGER NOT NULL,
+        fatigue INTEGER,
         emotions TEXT NOT NULL,
         contacts TEXT NOT NULL DEFAULT '[]',
         event TEXT,

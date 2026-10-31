@@ -7,11 +7,11 @@ import 'package:flutter/material.dart';
 /// magnitude, so color here is a redundant, not sole, cue.
 class MoodColors {
   static const Map<int, Color> _byScore = {
-    1: Color(0xFFD03B3B), // critical
-    2: Color(0xFFEC835A), // serious
-    3: Color(0xFFFAB219), // warning
-    4: Color(0xFF83AA12), // leaning good
-    5: Color(0xFF0CA30C), // good
+    1: Color(0xFFFF6B81), // critical
+    2: Color(0xFFFFA36B), // serious
+    3: Color(0xFFFFD66B), // warning
+    4: Color(0xFFB4DE6B), // leaning good
+    5: Color(0xFF6BD68B), // good
   };
 
   static Color colorFor(int mood) => _byScore[mood.clamp(1, 5)]!;

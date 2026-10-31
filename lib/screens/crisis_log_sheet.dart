@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import '../data/emotion_icons.dart';
 import '../data/emotions_repository.dart';
 import '../models/crisis_log.dart';
 import '../services/cog_sync_service.dart';
@@ -189,6 +190,8 @@ class _CrisisLogSheetState extends State<_CrisisLogSheet> {
                 children: [
                   for (final emotion in _availableEmotions)
                     FilterChip(
+                      avatar: Text(EmotionIcons.iconFor(emotion)),
+                      showCheckmark: false,
                       label: Text(emotion),
                       selected: _emotions.contains(emotion),
                       onSelected: (selected) {
